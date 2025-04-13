@@ -4,7 +4,10 @@ from flask_cors import CORS
 import os
 
 app = Flask(__name__)
-CORS(app)
+from flask_cors import CORS
+
+CORS(app, origins=["chrome-extension://hbigpbekbbpaljaoegikneekdiejhfbk"])
+
 
 # Weighted keyword scoring system (English + Slovak)
 KEYWORDS = {
