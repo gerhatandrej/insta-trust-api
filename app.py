@@ -53,4 +53,5 @@ def analyze_caption():
         score -= 1  # very emotional (positive or negative)
 
     # Clamp final score between 1 and 10
-    score = round(max(1
+   score = round(max(1, min(score, 10)))
+
