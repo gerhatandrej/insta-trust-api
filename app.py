@@ -1,8 +1,10 @@
 from flask import Flask, request, jsonify
 from textblob import TextBlob
+from flask_cors import CORS
 import os
 
 app = Flask(__name__)
+CORS(app)
 
 # Weighted keyword scoring system (English + Slovak)
 KEYWORDS = {
