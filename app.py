@@ -52,6 +52,19 @@ def analyze_caption():
     if polarity > 0.5 or polarity < -0.5:
         score -= 1  # very emotional (positive or negative)
 
-    # Clamp final score between 1 and 10
+        # Clamp final score between 1 and 10
     score = round(max(1, min(score, 10)))
+    return jsonify({
+        "score": score,
+        "details": {
+            "keywords": "✅" if risk_detected else "🟢",
+            "subjectivity": subjectivity,
+            "polarity": polarity
+        }
+    })
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
 
