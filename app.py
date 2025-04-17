@@ -4,15 +4,20 @@ from flask_cors import CORS
 import os
 
 app = Flask(__name__)
-CORS(app, origins=["chrome-extension://hbigpbekbbpaljaoegikneekdiejhfbk"])
 
-# Weighted keyword scoring system (English + Slovak)
+# ✅ CORS configuration: allow both the extension & Instagram itself
+CORS(app, origins=[
+    "chrome-extension://hbigpbekbbpaljaoegikneekdiejhfbk",
+    "https://www.instagram.com"
+])
+
+# 🔍 Weighted keyword scoring system (English + Slovak)
 KEYWORDS = {
     # 🔴 Risky (decrease trust)
     "miracle": -3, "hoax": -4, "flat earth": -5, "detox": -2, "secret": -3,
     "exposed": -2, "5g": -4, "cure": -2, "plandemic": -5, "conspiracy": -4, "fake": -3,
-    "zázrak": -3, "plochá zem": -5, "tajomstvo": -3, "odhalené": -2,
-    "liek": -2, "plandémia": -5, "konšpirácia": -4, "falošné": -3,
+    "zázrak": -3, "plochá zem": -5, "tajomstvo": -3, "odhalené": -2, "liek": -2,
+    "plandémia": -5, "konšpirácia": -4, "falošné": -3,
 
     # 🟢 Trust-boosting (increase trust)
     "source": +2, "study": +3, "peer-reviewed": +4, "research": +2,
@@ -25,37 +30,35 @@ def analyze_caption():
     data = request.get_json()
     caption = data.get("caption", "").lower()
 
-    # Start from a skeptical baseline
-    score = 3
+    # --- Initial score and risk check ---
+    score = 5  # neutral baseline
     risk_detected = False
 
-    # Check for keyword matches
     for keyword, weight in KEYWORDS.items():
         if keyword in caption:
             score += weight
             if weight < 0:
                 risk_detected = True
 
+    # --- Bonus for clean language ---
     if not risk_detected:
-        score += 2  # bonus for clean language
+        score += 2
 
-    # Analyze tone with TextBlob
+    # --- NLP with TextBlob ---
     blob = TextBlob(caption)
-    polarity = blob.sentiment.polarity      # -1 to 1
+    polarity = blob.sentiment.polarity        # -1 to 1
     subjectivity = blob.sentiment.subjectivity  # 0 to 1
 
-    # Objective tone → reward
-    if subjectivity <= 0.6:
-        score += 2
-
-    # Neutral sentiment → reward
-    if -0.5 <= polarity <= 0.5:
-        score += 2
-    else:
+    # --- Adjust score based on NLP ---
+    if subjectivity > 0.6:
+        score -= 1  # too subjective
+    if polarity > 0.5 or polarity < -0.5:
         score -= 1  # too emotional
+    if abs(polarity) < 0.3:
+        score += 2  # bonus for being neutral
 
-    # Cap score at 9 (never show perfect 10/10)
-    score = round(max(1, min(score, 9)))
+    # --- Clamp and return final score ---
+    score = round(max(1, min(score, 10)))
 
     return jsonify({
         "score": score,
