@@ -1,94 +1,63 @@
 from flask import Flask, request, jsonify
-from textblob import TextBlob
 from flask_cors import CORS
+from textblob import TextBlob
 import os
-import requests
 
 app = Flask(__name__)
-CORS(app, origins=["chrome-extension://hbigpbekbbpaljaoegikneekdiejhfbk"])
 
-# Get Hugging Face API key securely from environment variable
-HF_API_TOKEN = os.getenv("HF_API_TOKEN")
+# Allow any origin (Instagram page, your extension, etc.)
+CORS(app)
 
 # Weighted keyword scoring system (English + Slovak)
 KEYWORDS = {
     # 🔴 Risky (decrease trust)
     "miracle": -3, "hoax": -4, "flat earth": -5, "detox": -2, "secret": -3,
     "exposed": -2, "5g": -4, "cure": -2, "plandemic": -5, "conspiracy": -4, "fake": -3,
-    "zázrak": -3, "plochá zem": -5, "tajomstvo": -3,
+    "zázrak": -3, "hoax": -4, "plochá zem": -5, "detox": -2, "tajomstvo": -3,
     "odhalené": -2, "liek": -2, "plandémia": -5, "konšpirácia": -4, "falošné": -3,
-
-    # 🟢 Trust-boosting (increase trust)
+    # 🟢 Trust‑boosting (increase trust)
     "source": +2, "study": +3, "peer-reviewed": +4, "research": +2, "data": +2, "report": +1,
     "zdroj": +2, "štúdia": +3, "vedecký článok": +4, "výskum": +2, "údaje": +2, "správa": +1
 }
 
-def analyze_keywords(caption):
+@app.route("/analyze", methods=["POST"])
+def analyze_caption():
+    payload = request.get_json() or {}
+    caption = payload.get("caption", "").lower()
+
+    # --- Keyword scoring ---
     score = 5
     risk_detected = False
-
-    for keyword, weight in KEYWORDS.items():
-        if keyword in caption:
+    for kw, weight in KEYWORDS.items():
+        if kw in caption:
             score += weight
             if weight < 0:
                 risk_detected = True
 
+    # --- Clean language bonus ---
     if not risk_detected:
         score += 2
 
-    return score, risk_detected
-
-def analyze_sentiment(caption):
+    # --- NLP with TextBlob ---
     blob = TextBlob(caption)
-    polarity = blob.sentiment.polarity
-    subjectivity = blob.sentiment.subjectivity
+    polarity = blob.sentiment.polarity      # -1 to 1
+    subjectivity = blob.sentiment.subjectivity  # 0 to 1
 
-    adjust = 0
+    # Adjust for too subjective or emotional
     if subjectivity > 0.6:
-        adjust -= 1
-    if abs(polarity) > 0.5:
-        adjust -= 1
-    if abs(polarity) < 0.3:
-        adjust += 2
+        score -= 1
+    if polarity > 0.5 or polarity < -0.5:
+        score -= 1
 
-    return polarity, subjectivity, adjust
-
-def ml_trust_score(caption):
-    url = "https://api-inference.huggingface.co/models/microsoft/xtremedistil-l6-h384-uncased"
-    headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
-    payload = {"inputs": caption}
-
-    try:
-        response = requests.post(url, headers=headers, json=payload, timeout=10)
-        result = response.json()
-        if isinstance(result, list) and len(result) > 0:
-            # Just return a confidence score, normalized from 0–1 → scaled to 0–2
-            confidence = result[0][0]["score"]
-            return round(confidence * 2, 1)
-    except Exception as e:
-        print("ML API Error:", e)
-
-    return 0  # fallback
-
-@app.route("/analyze", methods=["POST"])
-def analyze_caption():
-    data = request.get_json()
-    caption = data.get("caption", "").lower()
-
-    score, risky = analyze_keywords(caption)
-    polarity, subjectivity, sentiment_adjust = analyze_sentiment(caption)
-    score += sentiment_adjust
-
-    score += ml_trust_score(caption)
-
+    # Clamp to [1..10]
     score = round(max(1, min(score, 10)))
 
     return jsonify({
         "score": score,
         "details": {
-            "keywords": "✅" if risky else "🟢",
-            "polarity": polarity,
-            "subjectivity": subjectivity
+            "keywords": "✅" if not risk_detected else "⚠️",
+            "subjectivity": subjectivity,
+            "polarity": polarity
         }
     })
 
